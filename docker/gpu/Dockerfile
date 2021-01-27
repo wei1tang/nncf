@@ -1,4 +1,17 @@
-FROM nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:11.0.3-cudnn8-devel-ubuntu20.04
+
+RUN echo "deb https://mirrors.aliyun.com/nvidia-cuda/ubuntu1804/x86_64/ ./" > /etc/apt/sources.list.d/cuda.list
+
+#RUN curl -fsSL https://mirrors.aliyun.com/nvidia-cuda/ubuntu1804/x86_64/7fa2af80.pub | apt-key add -
+# Download https://mirrors.aliyun.com/nvidia-cuda/ubuntu1804/x86_64/7fa2af80.pub and save it to nncf/docker/gpu
+COPY ./7fa2af80.pub /tmp/7fa2af80.pub
+RUN apt-key add /tmp/7fa2af80.pub
+
+RUN echo "" > /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ focal main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ focal-updates main restricted universe multiverse" >> /etc/apt/sources.list&& \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ focal-backports main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ focal-security main restricted universe multiverse" >> /etc/apt/sources.list
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         apt-transport-https \
@@ -27,6 +40,22 @@ RUN apt-get update && \
 	cd /usr/bin && \
 	ln -s python3.8 python && \
     rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive \
+    apt-get install -y --no-install-recommends \
+        libgl1-mesa-glx \
+        libglib2.0-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install tensorflow-gpu && \
+    pip3 uninstall -y protobuf && \
+    pip3 install google \
+        protobuf \
+        tensorflow_datasets \
+        tensorflow-addons \
+        pycocotools \
+        opencv-python
 
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH /usr/local/nvidia/lib:/usr/local/nvidia/lib64
