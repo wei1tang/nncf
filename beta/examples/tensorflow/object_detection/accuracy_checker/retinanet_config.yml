@@ -1,0 +1,5 @@
+launchers:
+  - framework: onnx_runtime
+    device: CPU
+    model: path_to_model/retinanet.onnx
+    adapter: retinanet

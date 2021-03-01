@@ -1,0 +1,17 @@
+launchers:
+  - framework: onnx_runtime
+    device: CPU
+    model: path_to_model/retinanet.onnx
+    adapter: yolov4
+      - classes: 80
+        anchors: [12, 16,  19, 36,  40, 28,  36, 75,  76, 55,  72, 146,  142, 110,  192, 243,  459, 401]
+        coords: 4
+        num: 3
+        anchor_mask: [6, 7, 8]
+        threshold: 0.001
+        input_width: 416
+        input_height: 416
+        outputs: 
+        raw_output: false
+        output_format: HWB
+

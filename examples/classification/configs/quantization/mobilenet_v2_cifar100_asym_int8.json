@@ -14,13 +14,17 @@
         ]
     },
     "compression": {
-        "algorithm": "quantization",
+	"algorithm": "quantization",
         "activations": {
             "mode": "asymmetric"
         },
         "weights": {
             "mode": "asymmetric"
-        }
+        },
+	"ignored_scopes": [
+           "nncf_module.classifier.1.bias",
+           "nncf_module.classifier.1.weight" 
+	]
     },
     "epochs": 5,
     "dataset": "CIFAR100"

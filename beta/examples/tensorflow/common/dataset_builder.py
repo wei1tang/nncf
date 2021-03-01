@@ -17,6 +17,7 @@ import tensorflow_datasets as tfds
 
 from beta.examples.tensorflow.common.logger import logger
 from beta.examples.tensorflow.common.utils import set_hard_limit_num_open_files
+from beta.examples.tensorflow.common.object_detection.datasets.tfrecords.coco2017_yolov4 import coco2017
 
 
 class BaseDatasetBuilder(ABC):
@@ -41,7 +42,7 @@ class BaseDatasetBuilder(ABC):
         self._skip_decoding = False
 
         # Dict with TFRecordDatasets
-        self._tfrecord_datasets = {}
+        self._tfrecord_datasets = {"coco2017": coco2017}
 
         self._split = 'train' if self._is_train else 'validation'
 

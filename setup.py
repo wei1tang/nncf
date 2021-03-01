@@ -146,7 +146,8 @@ setup(
               "quantization-aware-training", "hawq", "classification",
               "pruning", "object-detection", "semantic-segmentation", "nlp",
               "bert", "transformers", "mmdetection"],
-    include_package_data=True
+    include_package_data=True,
+    zip_safe=False
 )
 
 path_to_ninja = glob.glob(str(sysconfig.get_paths()["purelib"]+"/ninja*/ninja/data/bin/"))

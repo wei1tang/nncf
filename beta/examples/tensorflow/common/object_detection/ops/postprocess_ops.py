@@ -295,6 +295,10 @@ class MultilevelDetectionGenerator:
         scores = []
         for i in range(self._min_level, self._max_level + 1):
             s = str(i)
+            #try:
+            #    test = box_outputs[s]
+            #except:
+            #    s = int(i)
             box_outputs_i_shape = tf.shape(box_outputs[s])
             batch_size = box_outputs_i_shape[0]
             num_anchors_per_locations = box_outputs_i_shape[-1] // 4

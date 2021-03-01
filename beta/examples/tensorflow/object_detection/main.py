@@ -144,6 +144,8 @@ def create_train_step_fn(strategy, model, loss_fn, optimizer):
 
     def _train_step_fn(inputs):
         inputs, labels = inputs
+        for i in range(len(model.layers)):
+            model.layers[i].trainable = True
         with tf.GradientTape() as tape:
             outputs = model(inputs, training=True)
             all_losses = loss_fn(labels, outputs)
@@ -186,6 +188,11 @@ def train(train_step, test_step, eval_metric, train_dist_dataset, test_dist_data
                 save_path = checkpoint_manager.save()
                 logger.info('Saved checkpoint for epoch={}: {}'.format(epoch, save_path))
                 break
+            
+            #if step % 200 == 0:
+            #    save_path = checkpoint_manager.save()
+            #    logger.info('Saved checkpoint for epoch={}: {}'.format(epoch, save_path))
+            #    break
 
             compression_ctrl.scheduler.step()
             train_loss = train_step(x)
@@ -268,7 +275,7 @@ def run(config):
             predict_post_process_fn = model_builder.post_processing
 
             checkpoint = tf.train.Checkpoint(model=compress_model, optimizer=optimizer)
-            checkpoint_manager = tf.train.CheckpointManager(checkpoint, config.checkpoint_save_dir, max_to_keep=None)
+            checkpoint_manager = tf.train.CheckpointManager(checkpoint, config.checkpoint_save_dir, max_to_keep=None, keep_checkpoint_every_n_hours = 1)
 
             initial_epoch = initial_step = 0
             if config.ckpt_path:
@@ -312,7 +319,6 @@ def export(config):
     save_path, save_format = get_saving_parameters(config)
     compression_ctrl.export_model(save_path, save_format)
     logger.info("Saved to {}".format(save_path))
-
 
 def main(argv):
     parser = get_argument_parser()
