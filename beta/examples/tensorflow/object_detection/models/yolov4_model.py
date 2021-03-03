@@ -47,7 +47,6 @@ def compose(*funcs):
     else:
         raise ValueError('Composition of empty sequence not supported.')
 
-
 class Mish(Layer):
     '''
     Mish Activation Function.
@@ -250,6 +249,7 @@ def yolo_head(feats, anchors, num_classes, input_shape, calc_loss=False):
     if calc_loss == True:
         return grid, feats, box_xy, box_wh
     return box_xy, box_wh, box_confidence, box_class_probs
+    # box_xy shape=(4, 10, 10, 3, 2)  box_wh  shape=(4, 10, 10, 3, 2)  box_confidence  shape=(4, 10, 10, 3, 1) box_class_probs shape=(4, 10, 10, 3, 80)
 
 
 def yolo_correct_boxes(box_xy, box_wh, image_shape):
@@ -267,6 +267,7 @@ def yolo_correct_boxes(box_xy, box_wh, image_shape):
         box_maxes[..., 1:2]  # x_max
     ])
 
+    # boxes shape=(4, 10, 10, 3, 4)
     # Scale boxes back to original image shape.
     boxes *= K.concatenate([image_shape, image_shape])
     return boxes
@@ -277,23 +278,21 @@ def yolo_boxes_and_scores(feats, anchors, num_classes, input_shape, image_shape)
     box_xy, box_wh, box_confidence, box_class_probs = yolo_head(feats,
         anchors, num_classes, input_shape)
     boxes = yolo_correct_boxes(box_xy, box_wh, image_shape)
-    boxes = K.reshape(boxes, [-1, 4])
+    batch_size = K.shape(feats)[0]
+    boxes = K.reshape(boxes, [batch_size, -1, 4])
     box_scores = box_confidence * box_class_probs
-    box_scores = K.reshape(box_scores, [-1, num_classes])
+    box_scores = K.reshape(box_scores, [batch_size, -1, num_classes])
     return boxes, box_scores
 
 
 def yolo_eval(yolo_outputs,
               anchors,
               num_classes,
-              image_shape,
-              max_boxes=100,
-              score_threshold=.6,
-              iou_threshold=.5):
+              image_shape):
     """Evaluate YOLO model on given input and return filtered boxes."""
     num_layers = len(yolo_outputs)
     anchor_mask = [[6,7,8], [3,4,5], [0,1,2]]
-    input_shape = K.shape(yolo_outputs[0])[1:3] * 32
+    input_shape = K.shape(yolo_outputs[0])[1:3] * 32    # shape=(4, 10, 10, 255)   1:3  (10, 10)
     boxes = []
     box_scores = []
     for l in range(num_layers):
@@ -301,31 +300,10 @@ def yolo_eval(yolo_outputs,
             anchors[anchor_mask[l]], num_classes, input_shape, image_shape)
         boxes.append(_boxes)
         box_scores.append(_box_scores)
-    boxes = K.concatenate(boxes, axis=0)
-    box_scores = K.concatenate(box_scores, axis=0)
-
-    mask = box_scores >= score_threshold
-    max_boxes_tensor = K.constant(max_boxes, dtype='int32')
-    boxes_ = []
-    scores_ = []
-    classes_ = []
-    for c in range(num_classes):
-        # TODO: use keras backend instead of tf.
-        class_boxes = tf.boolean_mask(boxes, mask[:, c])
-        class_box_scores = tf.boolean_mask(box_scores[:, c], mask[:, c])
-        nms_index = tf.image.non_max_suppression(
-            class_boxes, class_box_scores, max_boxes_tensor, iou_threshold=iou_threshold)
-        class_boxes = K.gather(class_boxes, nms_index)
-        class_box_scores = K.gather(class_box_scores, nms_index)
-        classes = K.ones_like(class_box_scores, 'int32') * c
-        boxes_.append(class_boxes)
-        scores_.append(class_box_scores)
-        classes_.append(classes)
-    boxes_ = K.concatenate(boxes_, axis=0)
-    scores_ = K.concatenate(scores_, axis=0)
-    classes_ = K.concatenate(classes_, axis=0)
-
-    return boxes_, scores_, classes_
+    boxes = K.concatenate(boxes, axis=1)    #  shape=(4, 6300, 4)
+    box_scores = K.concatenate(box_scores, axis=1)   # shape=(4, 6300, 80)
+ 
+    return boxes, box_scores
 
 def bbox_iou_data(boxes1, boxes2):
     boxes1 = np.array(boxes1)
@@ -343,46 +321,46 @@ def bbox_iou_data(boxes1, boxes2):
     union_area = boxes1_area + boxes2_area - inter_area
     return inter_area / union_area
 
-def preprocess_true_boxes(bboxes, train_output_sizes, strides, num_classes, max_bbox_per_scale, anchors):
-    label = [np.zeros((train_output_sizes[i], train_output_sizes[i], 3,
-                       5 + num_classes)) for i in range(3)]
-    bboxes_xywh = [np.zeros((max_bbox_per_scale, 4)) for _ in range(3)]
-    bbox_count = np.zeros((3,))
-    for bbox in bboxes:
-        bbox_coor = bbox[:4]
-        bbox_class_ind = bbox[4]
-        onehot = np.zeros(num_classes, dtype=np.float)
-        onehot[bbox_class_ind] = 1.0
-        bbox_xywh = np.concatenate([(bbox_coor[2:] + bbox_coor[:2]) * 0.5, bbox_coor[2:] - bbox_coor[:2]], axis=-1)
-        bbox_xywh_scaled = 1.0 * bbox_xywh[np.newaxis, :] / strides[:, np.newaxis]
-        iou = []
-        for i in range(3):
-            anchors_xywh = np.zeros((3, 4))
-            anchors_xywh[:, 0:2] = np.floor(bbox_xywh_scaled[i, 0:2]).astype(np.int32) + 0.5
-            anchors_xywh[:, 2:4] = anchors[i]
-            iou_scale = bbox_iou_data(bbox_xywh_scaled[i][np.newaxis, :], anchors_xywh)
-            iou.append(iou_scale)
-        best_anchor_ind = np.argmax(np.array(iou).reshape(-1), axis=-1)
-        best_detect = int(best_anchor_ind / 3)
-        best_anchor = int(best_anchor_ind % 3)
-        xind, yind = np.floor(bbox_xywh_scaled[best_detect, 0:2]).astype(np.int32)
-        # 防止越界
-        grid_r = label[best_detect].shape[0]
-        grid_c = label[best_detect].shape[1]
-        xind = max(0, xind)
-        yind = max(0, yind)
-        xind = min(xind, grid_r-1)
-        yind = min(yind, grid_c-1)
-        label[best_detect][yind, xind, best_anchor, :] = 0
-        label[best_detect][yind, xind, best_anchor, 0:4] = bbox_xywh
-        label[best_detect][yind, xind, best_anchor, 4:5] = 1.0
-        label[best_detect][yind, xind, best_anchor, 5:] = onehot
-        bbox_ind = int(bbox_count[best_detect] % max_bbox_per_scale)
-        bboxes_xywh[best_detect][bbox_ind, :4] = bbox_xywh
-        bbox_count[best_detect] += 1
-    label_sbbox, label_mbbox, label_lbbox = label
-    sbboxes, mbboxes, lbboxes = bboxes_xywh
-    return label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes
+# def preprocess_true_boxes(bboxes, train_output_sizes, strides, num_classes, max_bbox_per_scale, anchors):
+#     label = [np.zeros((train_output_sizes[i], train_output_sizes[i], 3,
+#                        5 + num_classes)) for i in range(3)]
+#     bboxes_xywh = [np.zeros((max_bbox_per_scale, 4)) for _ in range(3)]
+#     bbox_count = np.zeros((3,))
+#     for bbox in bboxes:
+#         bbox_coor = bbox[:4]
+#         bbox_class_ind = bbox[4]
+#         onehot = np.zeros(num_classes, dtype=np.float)
+#         onehot[bbox_class_ind] = 1.0
+#         bbox_xywh = np.concatenate([(bbox_coor[2:] + bbox_coor[:2]) * 0.5, bbox_coor[2:] - bbox_coor[:2]], axis=-1)
+#         bbox_xywh_scaled = 1.0 * bbox_xywh[np.newaxis, :] / strides[:, np.newaxis]
+#         iou = []
+#         for i in range(3):
+#             anchors_xywh = np.zeros((3, 4))
+#             anchors_xywh[:, 0:2] = np.floor(bbox_xywh_scaled[i, 0:2]).astype(np.int32) + 0.5
+#             anchors_xywh[:, 2:4] = anchors[i]
+#             iou_scale = bbox_iou_data(bbox_xywh_scaled[i][np.newaxis, :], anchors_xywh)
+#             iou.append(iou_scale)
+#         best_anchor_ind = np.argmax(np.array(iou).reshape(-1), axis=-1)
+#         best_detect = int(best_anchor_ind / 3)
+#         best_anchor = int(best_anchor_ind % 3)
+#         xind, yind = np.floor(bbox_xywh_scaled[best_detect, 0:2]).astype(np.int32)
+#         # 防止越界
+#         grid_r = label[best_detect].shape[0]
+#         grid_c = label[best_detect].shape[1]
+#         xind = max(0, xind)
+#         yind = max(0, yind)
+#         xind = min(xind, grid_r-1)
+#         yind = min(yind, grid_c-1)
+#         label[best_detect][yind, xind, best_anchor, :] = 0
+#         label[best_detect][yind, xind, best_anchor, 0:4] = bbox_xywh
+#         label[best_detect][yind, xind, best_anchor, 4:5] = 1.0
+#         label[best_detect][yind, xind, best_anchor, 5:] = onehot
+#         bbox_ind = int(bbox_count[best_detect] % max_bbox_per_scale)
+#         bboxes_xywh[best_detect][bbox_ind, :4] = bbox_xywh
+#         bbox_count[best_detect] += 1
+#     label_sbbox, label_mbbox, label_lbbox = label
+#     sbboxes, mbboxes, lbboxes = bboxes_xywh
+#     return label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes
 
 
 def bbox_ciou(boxes1, boxes2):
@@ -610,7 +588,9 @@ class YoloV4Model(base_model.Model):
         self.max_bbox_per_scale = 150
         self.num_anchors = len(self.anchors)
         self.num_classes = len(self.class_names)
-        self.input_image_shape = K.placeholder(shape=(2, ))
+        self._min_level = params.model_params.architecture.min_level
+        self._max_level = params.model_params.architecture.max_level
+        self.input_image_shape = K.constant([params.preprocessing.width,  params.preprocessing.height])
 
         # For eval metrics.
         self._params = params
@@ -623,12 +603,7 @@ class YoloV4Model(base_model.Model):
         self._keras_model = None
 
         # Predict function.
-        # self._generate_detections_fn = postprocess_ops.MultilevelDetectionGenerator(
-        #     params.model_params.architecture.min_level,
-        #     params.model_params.architecture.max_level,
-        #     params.model_params.postprocessing)
-
-        self._generate_detections_fn = postprocess_ops.GenericDetectionGenerator(params)
+        self._generate_detections_fn = postprocess_ops._generate_detections
 
         # Input layer.
         self._input_layer = tf.keras.layers.Input(
@@ -657,14 +632,6 @@ class YoloV4Model(base_model.Model):
         trainable_variables = filter_fn(self._keras_model.trainable_variables)
 
         def _total_loss_fn(labels, outputs):
-            # y_true = [
-            #     labels["label_sbbox"],  # label_sbbox
-            #     labels["label_mbbox"],  # label_mbbox
-            #     labels["label_lbbox"],  # label_lbbox
-            #     labels["sbboxes"],      # true_sbboxes
-            #     labels["mbboxes"],      # true_mbboxes
-            #     labels["lbboxes"]       # true_lbboxes
-            # ]
             _args = [outputs['y19_output'], outputs['y38_output'], 
                         outputs['y76_output'], 
                         tf.squeeze(tf.convert_to_tensor(labels["label_sbbox"])),  # label_sbbox
@@ -731,14 +698,12 @@ class YoloV4Model(base_model.Model):
                 raise ValueError('"{}" is missing in outputs, requried {} found {}'.format(
                                  field, required_label_fields, labels.keys()))
 
-        boxes_, scores_, classes_ = yolo_eval([self._keras_model.output['y19_output'], self._keras_model.output['y38_output'],
-                self._keras_model.output['y76_output']], self.eval_anchors,
-                self.num_classes, self.input_image_shape,
-                score_threshold=self.score, iou_threshold=self.iou)
+        boxes_, scores_ = yolo_eval([outputs['y19_output'], outputs['y38_output'],
+                outputs['y76_output']], self.eval_anchors,
+                self.num_classes, self.input_image_shape)
 
-        boxes, scores, classes, valid_detections = self._generate_detections_fn(
-            boxes_, scores_, classes_,
-            labels['image_info'][:, 1:2, :])
+        boxes, scores, classes, valid_detections = self._generate_detections_fn(tf.expand_dims(boxes_, axis=2), boxes_)
+        
         # Discards the old output tensors to save memory. The `y19_output`,
         # `y38_output` and `y76_output` are pretty big and could potentiall lead to memory issue.
         outputs = {
@@ -749,13 +714,6 @@ class YoloV4Model(base_model.Model):
             'detection_classes': classes,
             'detection_scores': scores,
         }
-
-        if 'groundtruths' in labels:
-            labels['source_id'] = labels['groundtruths']['source_id']
-            labels['boxes'] = labels['groundtruths']['boxes']
-            labels['classes'] = labels['groundtruths']['classes']
-            labels['areas'] = labels['groundtruths']['areas']
-            labels['is_crowds'] = labels['groundtruths']['is_crowds']
 
         return labels, outputs
 

@@ -140,7 +140,7 @@ class RetinanetModel(base_model.Model):
             'detection_classes': classes,
             'detection_scores': scores,
         }
-
+        
         return labels, outputs
 
     def eval_metrics(self):

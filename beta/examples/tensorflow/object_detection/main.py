@@ -37,7 +37,6 @@ from beta.examples.tensorflow.common.utils import get_saving_parameters
 from beta.examples.tensorflow.object_detection.models.model_selector import get_predefined_config
 from beta.examples.tensorflow.object_detection.models.model_selector import get_model_builder
 
-
 def get_argument_parser():
     parser = get_common_argument_parser(precision=False,
                                         save_checkpoint_freq=False,
@@ -144,8 +143,8 @@ def create_train_step_fn(strategy, model, loss_fn, optimizer):
 
     def _train_step_fn(inputs):
         inputs, labels = inputs
-        for i in range(len(model.layers)):
-            model.layers[i].trainable = True
+        #for i in range(len(model.layers)):
+        #    model.layers[i].trainable = True
         with tf.GradientTape() as tape:
             outputs = model(inputs, training=True)
             all_losses = loss_fn(labels, outputs)
@@ -275,7 +274,7 @@ def run(config):
             predict_post_process_fn = model_builder.post_processing
 
             checkpoint = tf.train.Checkpoint(model=compress_model, optimizer=optimizer)
-            checkpoint_manager = tf.train.CheckpointManager(checkpoint, config.checkpoint_save_dir, max_to_keep=None, keep_checkpoint_every_n_hours = 1)
+            checkpoint_manager = tf.train.CheckpointManager(checkpoint, config.checkpoint_save_dir, max_to_keep=None)
 
             initial_epoch = initial_step = 0
             if config.ckpt_path:

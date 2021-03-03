@@ -23,8 +23,8 @@ YOLOV4_CONFIG = SampleConfig({
         "aug_scale_max": 1.0,
         "skip_crowd_during_training": True,
         "max_num_instances": 100,
-        "height" : 608,
-        "weight" : 608,
+        "height" : 320,
+        "width" : 320,
     },
     "model_params": {
         "architecture": {

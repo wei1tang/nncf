@@ -23,9 +23,16 @@ NUM_EXAMPLES_TRAIN = 118287
 NUM_EXAMPLES_EVAL = 5000
 NUM_CLASSES = 80
 
-_label_sbbox_shape =  (76, 76, 3, 85)
-_label_mbbox_shape =  (38, 38, 3, 85)
-_label_lbbox_shape =  (19, 19, 3, 85)
+# 608
+# _label_sbbox_shape =  (76, 76, 3, 85)
+# _label_mbbox_shape =  (38, 38, 3, 85)
+# _label_lbbox_shape =  (19, 19, 3, 85)
+
+# 320
+_label_sbbox_shape =  (40, 40, 3, 85)
+_label_mbbox_shape =  (20, 20, 3, 85)
+_label_lbbox_shape =  (10, 10, 3, 85)
+
 _sbboxes_shape =  (150, 4)
 _mbboxes_shape =  (150, 4)
 _lbboxes_shape =  (150, 4)
